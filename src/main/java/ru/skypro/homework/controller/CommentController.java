@@ -1,151 +1,109 @@
 package ru.skypro.homework.controller;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
-import ru.skypro.homework.dto.comment.CommentDTO;
-import ru.skypro.homework.dto.comment.CreateOrUpdateCommentDTO;
+import ru.skypro.homework.dto.AdDto;
+import ru.skypro.homework.dto.CommentDto;
+import ru.skypro.homework.dto.CommentsDto;
+import ru.skypro.homework.dto.CreateOrUpdateCommentDto;
+import ru.skypro.homework.service.AdService;
+import ru.skypro.homework.service.CommentService;
 
 /**
- *
+ * Контроллер для обработки запросов для комментариев
  */
-
 @RestController
-@RequestMapping("/ads")
-@RequiredArgsConstructor
+@RequestMapping(path = "/ads")
 @CrossOrigin(value = "http://localhost:3000")
-@Validated
-@Slf4j
-@Tag(name = "Комментарии", description = "Управление комментариями объявления")
 public class CommentController {
+    private final CommentService commentService;
+    private final AdService adService;
+
+    public CommentController(final CommentService commentService,
+                             final AdService adService) {
+        this.commentService = commentService;
+        this.adService = adService;
+    }
 
     /**
-     * Метод для получения всех комментариев объявления
-     * @return возвращает список всех комментариев объявления по id объявления
+     * Получение всех комментариев объявления для авторизованного пользователя
+     * <br>Используется метод сервиса {@link ru.skypro.homework.service.impl.CommentServiceImpl#getComments}
+     * @param adId Integer
+     * @return CommentsDto
      */
-    @Operation(summary = "Получение комментариев объявления")
-    @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode="200",
-                    description = "OK: возвращает комментарии объявления",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                            array = @ArraySchema(schema = @Schema(implementation = CommentDTO.class)))),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "UNAUTHORIZED: нет доступа к объявлению",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "404",
-                    description = "NOT_FOUND: объявление не найдено",
-                    content = @Content
-            )
-    })
     @GetMapping("/{id}/comments")
-    public ResponseEntity<CommentDTO> getComments(@RequestParam @PathVariable("adId") Integer id) {
-        return new ResponseEntity<>(HttpStatus.OK);
+    public ResponseEntity<CommentsDto> getComments(@PathVariable(value = "id") Integer adId) {
+        AdDto foundAd = adService.findAdById(adId);
+        if (foundAd == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } else {
+            CommentsDto comments = commentService.getComments(adId);
+            return ResponseEntity.ok(comments);
+        }
     }
 
-
     /**
-     * Метод для добавления комментария к объявлению по id объявления
-     * @return возвращает добавленный комментарий объявления
+     * Добавление комментария к объявлению
+     * <br>Используется метод сервиса {@link ru.skypro.homework.service.impl.CommentServiceImpl#addComment}
+     * @param adId    Integer
+     * @param comment CreateOrUpdateCommentDto
+     * @return CommentDto
      */
-    @Operation(summary = "Добавление комментария к объявлению")
-    @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "201",
-                    description = "CREATED: комментарий добавлен",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                            array = @ArraySchema(schema = @Schema(implementation = CommentDTO.class)))),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "UNAUTHORIZED: нет доступа к объявлению",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "404",
-                    description = "NOT_FOUND: объявление найдено",
-                    content = @Content
-            )
-    })
     @PostMapping("/{id}/comments")
-    public ResponseEntity<CommentDTO> postComment(@RequestParam @PathVariable("adId") Integer id,
-                                                  @RequestBody CreateOrUpdateCommentDTO createOrUpdateCommentDTO) {
-        return new ResponseEntity<>(HttpStatus.CREATED);
+    public ResponseEntity<CommentDto> addComment(@PathVariable(value = "id") Integer adId,
+                                                 @RequestBody CreateOrUpdateCommentDto comment) {
+        AdDto foundAd = adService.findAdById(adId);
+        if (foundAd == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } else {
+            CommentDto addedComment = commentService.addComment(adId, comment);
+            return ResponseEntity.ok(addedComment);
+        }
     }
 
     /**
-     * Метод для удаления объявления
-     * @return возвращает статус 200 если комментарий был удален
+     * Удаление комментария по ID объявления и ID комментария для авторизованного пользователя
+     *<br>Используется метод сервиса {@link ru.skypro.homework.service.impl.CommentServiceImpl#deleteComment}
+     * @param adId      Integer
+     * @param commentId Integer
+     * @return Void (статус 200 OK)
      */
-    @Operation(summary = "Удаление комментария")
-    @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "OK: комментарий удален",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "401",
-                    description = "UNAUTHORIZED: нет доступа к удалению комментария",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "403",
-                    description = "FORBIDDEN: роль пользователя не предоставляет доступ к данному api",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "404",
-                    description = "NOT_FOUND: объявление или комментарий не найдены",
-                    content = @Content
-            )
-    })
-    @DeleteMapping("/{id}/comments/{commentId}")
-    public ResponseEntity<?> deleteComment(@RequestParam @PathVariable("adId") Integer adId,
-                                           @RequestParam @PathVariable("commentId") Integer commentId) {
-        return new ResponseEntity<>(HttpStatus.OK);
+    @DeleteMapping("/{adId}/comments/{commentId}")
+    public ResponseEntity<Void> deleteComment(@PathVariable(value = "adId") Integer adId,
+                                              @PathVariable(value = "commentId") Integer commentId) {
+        AdDto foundAd = adService.findAdById(adId);
+        CommentDto foundComment = commentService.findCommentByAdIdAndCommentId(adId, commentId);
+
+        return (foundAd == null || foundComment == null)
+                ? ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+                : commentService.deleteComment(adId, commentId)
+                ? ResponseEntity.ok().build()
+                : ResponseEntity.status(HttpStatus.FORBIDDEN).build();
     }
 
     /**
-     * Метод для обновления комментария по id объявления
-     * @return возвращает измененный комментарий
+     * Обновление комментария
+     *<br>Используется метод сервиса {@link ru.skypro.homework.service.impl.CommentServiceImpl#updateComment}
+     * @param adId      Integer
+     * @param commentId Integer
+     * @param comment   CreateOrUpdateCommentDto
+     * @return CommentDto
      */
-    @Operation(summary = "Обновление комментария")
-    @ApiResponses(value = {
-            @ApiResponse(
-                    responseCode = "200",
-                    description = "OK: комментарий изменен",
-                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                            schema = @Schema(implementation = CommentDTO.class))
-            ),
-            @ApiResponse(
-                    responseCode = "403",
-                    description = "FORBIDDEN: роль пользователя не предоставляет доступ к данному api",
-                    content = @Content
-            ),
-            @ApiResponse(
-                    responseCode = "404",
-                    description = "NOT_FOUND: объявление или комментарий не найдены",
-                    content = @Content
-            )
-    })
-    @PatchMapping("/{id}/comments/{commentId}")
-    public ResponseEntity<CommentDTO> updateComment(@RequestParam @PathVariable("adId") Integer id,
-                                                    @RequestParam @PathVariable("commentId") Integer commentId,
-                                                    @RequestBody CreateOrUpdateCommentDTO createOrUpdateCommentDTO) {
-        return new ResponseEntity<>(HttpStatus.OK);
+    @PatchMapping("/{adId}/comments/{commentId}")
+    public ResponseEntity<CommentDto> updateComment(@PathVariable(value = "adId") Integer adId,
+                                                    @PathVariable(value = "commentId") Integer commentId,
+                                                    @RequestBody CreateOrUpdateCommentDto comment) {
+        AdDto foundAd = adService.findAdById(adId);
+        CommentDto foundComment = commentService.findCommentByAdIdAndCommentId(adId, commentId);
+        if (foundAd == null || foundComment == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        } else {
+            CommentDto updatedComment = commentService.updateComment(adId, commentId, comment);
+            return (updatedComment != null)
+                    ? ResponseEntity.ok(updatedComment)
+                    : ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
+
 }

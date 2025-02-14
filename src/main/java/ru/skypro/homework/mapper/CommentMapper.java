@@ -1,50 +1,60 @@
 package ru.skypro.homework.mapper;
 
+import lombok.NonNull;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import ru.skypro.homework.dto.comment.CommentDTO;
-import ru.skypro.homework.dto.comment.CommentsDTO;
-import ru.skypro.homework.model.Comment;
+import org.springframework.web.util.UriComponentsBuilder;
+import ru.skypro.homework.dto.CommentDto;
+import ru.skypro.homework.dto.CommentsDto;
+import ru.skypro.homework.entity.Comment;
 
-import java.time.LocalDateTime;
+import java.nio.file.Path;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
-/**
- *
- */
 @Component
 public class CommentMapper {
 
-    public static CommentDTO commentToDto(Comment comment) {
-        if (comment == null) {
-            throw new IllegalArgumentException("Попытка конвертировать comment == null");
-        }
-        Integer author = comment.getAuthor().getId();
-        String authorImage = comment.getAuthor().getImage().getImagePath();
-        String authorFirstName = comment.getAuthor().getFirstname();
-        LocalDateTime createdAt = comment.getCreatedAt();
-        Integer pk = comment.getPk();
-        String text = comment.getText();
-        return new CommentDTO(author, authorImage, authorFirstName, createdAt, pk, text);
+    private final String fullAvatarPath;
+
+    public CommentMapper(@Value("${path.to.avatars.folder}") String pathToAvatarsDir) {
+        Path pathToAvatars = Path.of(pathToAvatarsDir);
+        this.fullAvatarPath = UriComponentsBuilder.newInstance()
+                .path("/" + pathToAvatarsDir + "/")
+                .build()
+                .toUriString();
     }
 
-    public static Comment commentDtoToComment(CommentDTO commentDTO) {
-        if (commentDTO == null) {
-            throw new IllegalArgumentException("Попытка конвертировать commentDTO == null");
-        }
+    public CommentDto toDto(@NonNull Comment comment) {
+        CommentDto commentDto = new CommentDto();
+
+        commentDto.setPk(comment.getPk());
+        commentDto.setText(comment.getText());
+        commentDto.setAuthor(comment.getAuthor().getId());
+        commentDto.setCreatedAt(comment.getCreatedAt());
+        commentDto.setAuthorFirstName(comment.getAuthor().getFirstName());
+
+        Optional.ofNullable(comment.getAuthor().getImage())
+                .ifPresent(elem -> commentDto.setAuthorImage(fullAvatarPath + comment.getAuthor().getImage()));
+
+        return commentDto;
+    }
+
+    public CommentsDto toCommentsDto(Integer count, @NonNull List<CommentDto> results) {
+        CommentsDto commentsDto = new CommentsDto();
+
+        commentsDto.setCount(count);
+        commentsDto.setResults(results);
+
+        return commentsDto;
+    }
+
+    public Comment toEntity(CommentDto commentDto) {
         Comment comment = new Comment();
 
-        comment.setPk(commentDTO.getPk());
-        comment.setCreatedAt(commentDTO.getCreatedAt());
-        comment.setText(commentDTO.getText());
+        comment.setText(commentDto.getText());
 
         return comment;
     }
 
-    public static CommentsDTO toCommentsDTO(List<Comment> comments) {
-        CommentsDTO commentsDTO = new CommentsDTO();
-        commentsDTO.setCount(comments.size());
-        commentsDTO.setResults(comments.stream().map(e -> commentToDto(e)).collect(Collectors.toList()));
-        return commentsDTO;
-    }
 }

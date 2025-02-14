@@ -1,102 +1,192 @@
 package ru.skypro.homework.service.impl;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import ru.skypro.homework.dto.user.NewPassword;
-import ru.skypro.homework.dto.user.UpdateUserDTO;
-import ru.skypro.homework.dto.user.UserDTO;
-import ru.skypro.homework.exception.IncorrectPasswordException;
-import ru.skypro.homework.exception.UserNotFoundException;
+import org.springframework.web.util.UriComponentsBuilder;
+import ru.skypro.homework.dto.UpdateUserDto;
+import ru.skypro.homework.dto.UserDto;
+import ru.skypro.homework.entity.User;
+import ru.skypro.homework.exception.UserAvatarProcessingException;
 import ru.skypro.homework.mapper.UserMapper;
-import ru.skypro.homework.model.User;
 import ru.skypro.homework.repository.UserRepository;
 import ru.skypro.homework.service.UserService;
 
+import java.io.FileOutputStream;
 import java.io.IOException;
-import java.security.Principal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Objects;
+import java.util.UUID;
 
-@Slf4j
-@RequiredArgsConstructor
-
+/**
+ * Сервис для работы с пользователями
+ */
 @Service
 public class UserServiceImpl implements UserService {
 
-    private final UserMapper userMapper;
-    private final UserRepository userRepository;
+    private final UserRepository repository;
+    private final UserMapper mapper;
     private final PasswordEncoder encoder;
+    private final String fullAvatarPath;
+
+    public UserServiceImpl(final UserRepository repository,
+                           final UserMapper mapper,
+                           final PasswordEncoder encoder,
+                           @Value("${path.to.avatars.folder}") String pathToAvatarsDir) {
+        this.repository = repository;
+        this.mapper = mapper;
+        this.encoder = encoder;
+        this.fullAvatarPath = UriComponentsBuilder.newInstance()
+                .path(pathToAvatarsDir + "/")
+                .build()
+                .toUriString();
+    }
 
     /**
-     * Метод для смены пароля пользователя.
-     * Кодировка нового пароля пользователя с помощью бина PasswordEncoder.
-     *
-     * @param newPassword Dto NewPassword.
-     * @param principal интерфейс для получения username пользователя.
-     * @throws UserNotFoundException выбрасывается, если пользователь не найден в таблице user.
-     * @throws IncorrectPasswordException выбрасывается, если текущий пароль в NewPassword не совпадает с паролем в таблице user.
+     * Метод, который вытаскивает авторизованного пользователя
+     * <br><br> Используется объект SecurityContextHolder.
+     * <br> В нем мы храним информацию о текущем контексте безопасности приложения, который включает в себя подробную информацию о пользователе работающем в настоящее время с приложением.
+     * @return UserDto – объект пользователя
      */
     @Override
-    public void setPassword(NewPassword newPassword, Principal principal) {
-        String username = principal.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UserNotFoundException(username));
-        if (!encoder.matches(newPassword.getCurrentPassword(), user.getPassword())) {
-            throw new IncorrectPasswordException(username);
+    public UserDto getAuthenticatedUser() {
+        Authentication currentUser = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails principalUser = (UserDetails) currentUser.getPrincipal();
+        return mapper.toDto(
+                repository.findByEmail(principalUser.getUsername())
+        );
+    }
+
+    /**
+     * Метод, который обновляет пароль от кабинета пользователя.
+     * <br> Используются методы сервиса {@link UserServiceImpl#checkCurrentPassword}, {@link UserServiceImpl#setNewPassword}
+     * @param email           почта
+     * @param currentPassword пароль, который использовался ранее
+     * @param newPassword     новый пароль
+     */
+    @Override
+    public boolean updatePassword(final String email, final String currentPassword, final String newPassword) {
+        if (checkCurrentPassword(email, currentPassword)) {
+            setNewPassword(email, newPassword);
+            return true;
         }
-        user.setPassword(encoder.encode(newPassword.getNewPassword()));
-        userRepository.save(user);
+        return false;
     }
 
     /**
-     * Метод для получения информации об аутентифицированном пользователе.
-     *
-     * @param principal интерфейс для получения username пользователя.
-     * @return Dto UserDto.
-     * @throws UserNotFoundException выбрасывается, если пользователь не найден в таблице user.
+     * Метод, который возвращает аватар
+     * @param path название файла изображения
+     * @return массив байтов
+     * @throws IOException
      */
     @Override
-    public UserDTO getUser(Principal principal) {
-        String username = principal.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UserNotFoundException(username));
-        return userMapper.userToUserDto(user);
+    public byte[] getAvatar(final String fileName) throws IOException {
+        Path path = Path.of(fullAvatarPath, fileName);
+        return new ByteArrayResource(Files
+                .readAllBytes(path)
+        ).getByteArray();
     }
 
     /**
-     * Метод для изменения информации аутентифицированного пользователя.
-     *
-     * @param updateUserDTO Dto UpdateUserDto.
-     * @param principal интерфейс для получения username пользователя.
-     * @return Dto UpdateUserDto.
-     * @throws UserNotFoundException выбрасывается, если пользователь не найден в таблице user.
+     * Приватный метод, который обновляет пароль пользователя в базе данных
+     * <br> Используется класс PasswordEncoder, нужен для выполнения одностороннего преобразования пароля, обеспечивающего безопасное хранение пароля
+     * @param email    почта
+     * @param password новый пароль
      */
-    @Override
-    public UpdateUserDTO updateUser(UpdateUserDTO updateUserDTO, Principal principal) {
-        String username = principal.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UserNotFoundException(username));
-        user.setFirstname(updateUserDTO.getFirstName());
-        user.setLastname(updateUserDTO.getLastName());
-        user.setPhone(updateUserDTO.getPhone());
-        userRepository.save(user);
-        return updateUserDTO;
+    private void setNewPassword(final String email, final String password) {
+        String encodedPassword = encoder.encode(password);
+        User user = repository.findByEmail(email);
+        user.setPassword(encodedPassword);
+        repository.save(user);
     }
 
     /**
-     * Метод для изменения аватарки пользователя.
-     *
-     * @param image картинка с аватаркой.
-     * @param principal интерфейс для получения username пользователя.
-     * @throws UserNotFoundException выбрасывается, если пользователь не найден в таблице user.
-     * @throws IOException выбрасывается, если возникают проблемы при получении картинки.
+     * Приватный метод, который используется для проверки корректности введенного пароля
+     * @param email    почта
+     * @param password пароль
+     */
+    private boolean checkCurrentPassword(final String email, final String password) {
+        User user = repository.findByEmail(email);
+        return encoder.matches(password, user.getPassword());
+    }
+
+    /**
+     * Метод, который обновляет данные пользователя.
+     * <br>Используется метод {@link UserServiceImpl#getAuthenticatedUser()}
+     * @param updatedUser
+     * @return UpdateUserDto – обновленный объект пользователя
      */
     @Override
-    public void updateUserImage(MultipartFile image, Principal principal) {
-        String username = principal.getName();
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UserNotFoundException(username));
-        return;
+    public UpdateUserDto updateUser(final UpdateUserDto updatedUser) {
+        UserDto userDto = this.getAuthenticatedUser();
+        repository
+                .findById(userDto.getId())
+                .map(oldUser -> {
+                    oldUser.setFirstName(updatedUser.getFirstName());
+                    oldUser.setLastName(updatedUser.getLastName());
+                    oldUser.setPhone(updatedUser.getPhone());
+                    return mapper.toDto(repository.save(oldUser));
+                });
+        return updatedUser;
     }
+
+    /**
+     * Метод, который обновляет аватар пользователя
+     * <br> Используются методы {@link UserServiceImpl#getExtensions}, {@link UserServiceImpl#writeToFile}
+     * @param file изображение для загрузки
+     * @return String – название файла изображения
+     */
+    @Override
+    public String updateAvatar(final MultipartFile file) {
+        UserDto userDto = this.getAuthenticatedUser();
+        try {
+            String extension = getExtensions(Objects.requireNonNull(file.getOriginalFilename()));
+            byte[] data = file.getBytes();
+            String fileName = UUID.randomUUID() + "." + extension;
+            Path pathToAvatar = Path.of(fullAvatarPath, fileName);
+            writeToFile(pathToAvatar, data);
+
+            String avatar = userDto.getImage();
+            if (avatar != null) {
+                Path path = Path.of(avatar.substring(1));
+                Files.delete(path);
+            }
+
+            repository
+                    .findById(userDto.getId())
+                    .map(user -> {
+                        user.setImage(fileName);
+                        return mapper.toDto(repository.save(user));
+                    });
+
+            return fileName;
+        } catch (IOException e) {
+            throw new UserAvatarProcessingException();
+        }
+    }
+
+    /**
+     * Приватный метод, который записывает переданный файл в папку на диске
+     */
+    private void writeToFile(Path path, byte[] data) {
+        try (FileOutputStream fos = new FileOutputStream(path.toFile())) {
+            fos.write(data);
+        } catch (IOException e) {
+            throw new UserAvatarProcessingException();
+        }
+    }
+
+    /**
+     * Приватный метод, который получает расширение загруженного файла
+     */
+    private String getExtensions(String fileName) {
+        return fileName.substring(fileName.lastIndexOf(".") + 1);
+    }
+
 }

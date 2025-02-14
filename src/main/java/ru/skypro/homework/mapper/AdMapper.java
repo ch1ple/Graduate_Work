@@ -1,120 +1,91 @@
 package ru.skypro.homework.mapper;
 
-import lombok.RequiredArgsConstructor;
-import ru.skypro.homework.dto.ads.Advertisements;
-import ru.skypro.homework.dto.ads.AdvertisementsDTO;
-import ru.skypro.homework.dto.ads.CreateOrUpdateAdvert;
-import ru.skypro.homework.dto.ads.ExtendAdvert;
-import ru.skypro.homework.model.Ad;
-import ru.skypro.homework.model.Image;
-import ru.skypro.homework.model.User;
+import lombok.NonNull;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.util.UriComponentsBuilder;
+import ru.skypro.homework.dto.AdDto;
+import ru.skypro.homework.dto.AdsDto;
+import ru.skypro.homework.dto.ExtendedAdDto;
+import ru.skypro.homework.entity.Ad;
+import ru.skypro.homework.exception.UserNotFoundException;
 import ru.skypro.homework.repository.UserRepository;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Optional;
 
-/**
- * @author Archinski
- */
-@RequiredArgsConstructor
+@Component
 public class AdMapper {
 
     private final UserRepository userRepository;
+    private final String imagePath;
 
-    /**
-     * Метод преобразует Dto CreateOrUpdateAd в объект класса Ad.
-     *
-     * @param createOrUpdateAd Dto, user, image.
-     * @return объект класса Ad.
-     */
-    public Ad createOrUpdateAdToAd(CreateOrUpdateAdvert createOrUpdateAd, User user, Image image) {
-        if (createOrUpdateAd == null) {
-            throw new IllegalArgumentException("Попытка конвертировать createOrUpdateAd == null");
-        }
-        Ad newAd = new Ad();
-
-        newAd.setTitle(createOrUpdateAd.getTitle());
-        newAd.setPrice(createOrUpdateAd.getPrice());
-        newAd.setDescription(createOrUpdateAd.getDescription());
-        newAd.setUser(user);
-        newAd.setImage(image);
-
-        return newAd;
+    public AdMapper(final UserRepository userRepository,
+                    @Value("${path.to.images.folder}") String pathToImagesDir) {
+        this.userRepository = userRepository;
+        this.imagePath = UriComponentsBuilder.newInstance()
+                .path("/" + pathToImagesDir + "/")
+                .build()
+                .toUriString();
     }
 
-    /**
-     * Метод преобразует Dto CreateOrUpdateAd в объект класса Ad.
-     *
-     * @param ad, createOrUpdateAd Dto, user, image.
-     * @return объект класса Ad.
-     */
-    public Ad createOrUpdateAdToAd(Ad ad, CreateOrUpdateAdvert createOrUpdateAd) {
-        if (createOrUpdateAd == null) {
-            throw new IllegalArgumentException("Попытка конвертировать createOrUpdateAd == null");
-        }
-        Ad newAd = new Ad();
+    public ExtendedAdDto toExtendedDto(@NonNull Ad ad) {
+        ExtendedAdDto adDto = new ExtendedAdDto();
 
-        newAd.setTitle(createOrUpdateAd.getTitle());
-        newAd.setPrice(createOrUpdateAd.getPrice());
-        newAd.setDescription(createOrUpdateAd.getDescription());
-        newAd.setUser(ad.getUser());
-        newAd.setImage(ad.getImage());
-        newAd.setId(ad.getId());
+        adDto.setPk(ad.getPk());
+        adDto.setTitle(ad.getTitle());
+        adDto.setDescription(ad.getDescription());
+        adDto.setPrice(ad.getPrice());
+        adDto.setAuthorFirstName(ad.getAuthor().getFirstName());
+        adDto.setAuthorLastName(ad.getAuthor().getLastName());
+        adDto.setEmail(ad.getAuthor().getEmail());
+        adDto.setPhone(ad.getAuthor().getPhone());
 
-        return newAd;
+        Optional.ofNullable(ad.getImage())
+                .ifPresent(elem -> adDto.setImage(imagePath + ad.getImage()));
+
+        return adDto;
     }
 
-    /**
-     * Метод преобразует объект класса Ad в Dto AdDTO.
-     *
-     * @param ad объект класса Ad.
-     * @return Dto AdDTO.
-     */
-    public AdvertisementsDTO adToAdDto(Ad ad) {
-        if (ad == null) {
-            throw new IllegalArgumentException("Попытка конвертировать ad == null");
-        }
-        AdvertisementsDTO adDTO = new AdvertisementsDTO();
+    public AdDto toDto(@NonNull Ad ad) {
+        AdDto adDto = new AdDto();
 
-        adDTO.setPk(ad.getId());
-        adDTO.setTitle(ad.getTitle());
-        adDTO.setPrice(ad.getPrice());
-        adDTO.setImage(ad.getImage().getImagePath());
-        adDTO.setAuthor(ad.getUser().getId());
-        return adDTO;
+        adDto.setPk(ad.getPk());
+        adDto.setTitle(ad.getTitle());
+        adDto.setPrice(ad.getPrice());
+        adDto.setAuthor(ad.getAuthor().getId());
+
+        Optional.ofNullable(ad.getImage())
+                .ifPresent(elem -> adDto.setImage(imagePath + ad.getImage()));
+
+        return adDto;
     }
 
-    /**
-     * Метод преобразует объект класса Ad в Dto ExtendedAd.
-     *
-     * @param ad объект класса Ad.
-     * @return Dto ExtendedAd.
-     */
-    public ExtendAdvert adToExtendedDtoOut(Ad ad) {
-        if (ad == null) {
-            throw new IllegalArgumentException("Попытка конвертировать ad == null");
-        }
-        ExtendAdvert extendedAd = new ExtendAdvert();
+    public AdsDto toAdsDto(Integer count, @NonNull List<AdDto> results) {
+        AdsDto adsDto = new AdsDto();
 
-        extendedAd.setPk(ad.getId());
-        extendedAd.setTitle(ad.getTitle());
-        extendedAd.setPrice(ad.getPrice());
-        extendedAd.setDescription(ad.getDescription());
-        extendedAd.setImage(ad.getImage().getImagePath());
+        adsDto.setCount(count);
+        adsDto.setResults(results);
 
-        extendedAd.setAuthorFirstName(ad.getUser().getFirstname());
-        extendedAd.setAuthorLastName(ad.getUser().getLastname());
-        extendedAd.setEmail(ad.getUser().getPassword());
-        extendedAd.setPhone(ad.getUser().getPhone());
-
-        return extendedAd;
+        return adsDto;
     }
 
+    public Ad toEntityFromDto(AdDto adDto) {
+        Ad ad = new Ad();
 
-    public Advertisements adsToAdsDto(List<Ad> ads) {
-        Advertisements adsDTO = new Advertisements();
-        adsDTO.setCount(ads.size());
-        adsDTO.setResults(ads.stream().map(e -> adToAdDto(e)).collect(Collectors.toList()));
-        return adsDTO;
+        ad.setTitle(adDto.getTitle());
+        ad.setPrice(adDto.getPrice());
+        ad.setImage(adDto.getImage());
+
+        Optional.ofNullable(adDto.getAuthor())
+                .ifPresent(authorId ->
+                        ad.setAuthor(
+                                userRepository.findById(authorId)
+                                        .orElseThrow(UserNotFoundException::new)
+                        )
+                );
+
+        return ad;
     }
+
 }

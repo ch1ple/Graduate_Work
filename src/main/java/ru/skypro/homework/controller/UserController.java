@@ -1,87 +1,95 @@
 package ru.skypro.homework.controller;
 
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import lombok.NonNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.validation.annotation.Validated;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import ru.skypro.homework.dto.user.NewPassword;
-import ru.skypro.homework.dto.user.UpdateUserDTO;
-import ru.skypro.homework.dto.user.UserDTO;
+import ru.skypro.homework.dto.NewPasswordDto;
+import ru.skypro.homework.dto.UpdateUserDto;
+import ru.skypro.homework.dto.UserDto;
+import ru.skypro.homework.service.UserService;
 import ru.skypro.homework.service.impl.UserServiceImpl;
 
-import java.security.Principal;
+import java.io.IOException;
 
-import static org.hibernate.tool.schema.SchemaToolingLogging.LOGGER;
-
+/**
+ * Контроллер для обработки запросов для пользователей
+ */
 @RestController
-@RequestMapping("users")
-@RequiredArgsConstructor
+@RequestMapping("/users")
 @CrossOrigin(value = "http://localhost:3000")
-@Validated
-@Slf4j
-@Tag(name = "Пользователи", description = "Управление данными пользователей")
-@ApiResponses(value = {
-        @ApiResponse(responseCode = "401", description = "UNAUTHORIZED: пользователь не авторизован"),
-        @ApiResponse(responseCode = "403", description = "FORBIDDEN: нет доступа"),
-        @ApiResponse(responseCode = "500", description = "INTERNAL_SERVER_ERROR: ошибка сервера при обработке запроса")})
 public class UserController {
 
-    private final UserServiceImpl userService;
+    private final UserService service;
 
-    @Operation(summary = "Обновление пароля")
-    @ApiResponse(
-            responseCode = "200", description = "OK: пароль изменен")
-    @PostMapping("/set_password")
-    public ResponseEntity setPassword(@RequestBody NewPassword newPassword, Principal principal) {
-        LOGGER.info(String.format("Получен запрос для setPassword: newPassword = %s, " + "user = %s", newPassword, principal.getName()));
-        userService.setPassword(newPassword, principal);
-        return ResponseEntity.ok().build();
+    public UserController(final UserService service) {
+        this.service = service;
     }
 
-    @Operation(summary = "Получение информации об авторизованном пользователе")
-    @ApiResponse(
-            responseCode = "200", description = "OK: данные пользователя найдены",
-            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = @Schema(implementation = UserDTO.class))
+    /**
+     * Установка нового пароля
+     * <br>Используется метод сервиса {@link UserServiceImpl#updatePassword}
+     * @param newPassword      NewPasswordDto
+     * @param authentication   Authentication
+     * @return String
+     */
+    @PostMapping("/set_password") // POST http://localhost:8080/users/set_password
+    public ResponseEntity<String> setPassword(@RequestBody NewPasswordDto newPassword,
+                                              @NonNull Authentication authentication) {
+        if (service.updatePassword(authentication.getName(),
+                newPassword.getCurrentPassword(),
+                newPassword.getNewPassword())) {
+            return ResponseEntity.ok("Password was updated");
+        } else {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Passwords do not match!");
+        }
+    }
+
+    /**
+     * Получение авторизованного пользователя
+     * <br>Используется метод сервиса {@link UserServiceImpl#getAuthenticatedUser()}
+     * @return UserDto
+     */
+    @GetMapping("/me") // GET http://localhost:8080/users/me
+    public ResponseEntity<UserDto> getUser() {
+        return ResponseEntity.ok(service.getAuthenticatedUser());
+    }
+
+    /**
+     * Обновление данных пользователя
+     * <br>Используется метод сервиса {@link UserServiceImpl#updateUser}
+     * @param updateUserDto UpdateUserDto
+     * @return UpdateUserDto
+     */
+    @PatchMapping("/me") // PATCH http://localhost:8080/users/me
+    public ResponseEntity<UpdateUserDto> updateUser(@RequestBody UpdateUserDto updateUserDto) {
+        UpdateUserDto updatedUser = service.updateUser(updateUserDto);
+        return ResponseEntity.ok(updatedUser);
+    }
+
+    /**
+     * Обновление аватара пользователя
+     * <br>Используется метод сервиса {@link UserServiceImpl#updateAvatar}
+     * @param image MultipartFile
+     * @return Resource
+     * @throws IOException
+     */
+    @PatchMapping(
+            path = "/me/image",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_OCTET_STREAM_VALUE
     )
-    @GetMapping("/me")
-    public ResponseEntity<UserDTO> getUser(Principal principal) {
-        LOGGER.info(String.format("Получен запрос для getUser: user = %s", principal.getName()));
-        return ResponseEntity.ok().body(userService.getUser(principal));
+    public ResponseEntity<byte[]> updateAvatar(@RequestParam MultipartFile image) throws IOException {
+        String fileName = service.updateAvatar(image);
+        if (fileName != null) {
+            byte[] avatar = service.getAvatar(fileName);
+            return ResponseEntity.ok().body(avatar);
+        } else {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
     }
 
-    @Operation(summary = "Обновление информации об авторизованном пользователе")
-    @ApiResponse(
-            responseCode = "200", description = "OK: данные пользователя обновлены",
-            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = @Schema(implementation = UpdateUserDTO.class))
-    )
-    @PatchMapping("/me")
-    public ResponseEntity<UpdateUserDTO> updateUser(@RequestBody UpdateUserDTO updateUserDTO, Principal principal) {
-        LOGGER.info(String.format("Получен запрос для updateUser: updateUserDTO = %s, " + "user = %s", updateUserDTO, principal.getName()));
-        return ResponseEntity.ok().body(userService.updateUser(updateUserDTO, principal));
-    }
-
-    @Operation(summary = "Обновление аватара авторизованного пользователя")
-    @ApiResponse(
-            responseCode = "200", description = "OK: аватар обновлен",
-            content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
-                    schema = @Schema(implementation = UpdateUserDTO.class))
-    )
-    @PatchMapping(value = "/me/image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity updateUserImage(@RequestParam MultipartFile image, Principal principal) {
-        LOGGER.info(String.format("Получен запрос для updateUserImage: image = %s, " + "user = %s", image, principal.getName()));
-        userService.updateUserImage(image, principal);
-        return ResponseEntity.ok().build();
-    }
 }
