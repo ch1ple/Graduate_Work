@@ -1,13 +1,13 @@
-package me.ch1ple.pro_sky_Graduate_Work;
+package ru.skypro.homework;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class ProSkyGraduateWorkApplicationTests {
+class HomeworkApplicationTests {
 
-	@Test
-	void contextLoads() {
-	}
+    @Test
+    void contextLoads() {
+    }
 
 }
